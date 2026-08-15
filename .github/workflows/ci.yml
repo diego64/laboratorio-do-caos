@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest-16core
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: actions/setup-node@v4
+        with:
+
+          node-version: 18
+          cache: pnpm
+
+      - name: Instalar dependencias
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Testes
+        working-directory: ./app
+        run: pnpm test:cov
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v3
+        with:
+          name: coverage
+          path: coverage/
+
+  docker:
+    needs: [lint]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build da imagem
+        run: docker build -t chaos-lab-api:${{ github.sha }} .
+
+      - name: Scan de vulnerabilidades
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: chaos-lab-api:${{ github.sha }}
+          exit-code: "1"
+          severity: "UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL"

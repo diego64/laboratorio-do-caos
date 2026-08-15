@@ -1,0 +1,40 @@
+# Config do Trivy. NÃO é lido automaticamente neste caminho — o Trivy procura
+# `trivy.yaml` no diretório atual. Para usar:
+#   local:  trivy --config .github/config/trivy.yaml fs .
+#   action: aquasecurity/trivy-action com `trivy-config: .github/config/trivy.yaml`
+
+# Só falha o build no que tem correção disponível e importa.
+severity:
+  - HIGH
+  - CRITICAL
+
+# Vulnerabilidade sem patch publicado não é acionável em PR.
+ignore-unfixed: true
+
+# Falha o comando quando encontra algo na severidade acima.
+exit-code: 1
+
+timeout: 10m
+
+scan:
+  scanners:
+    - vuln
+    - secret
+    - misconfig
+  skip-dirs:
+    - node_modules
+    - dist
+    - coverage
+
+misconfiguration:
+  # Este repositório tem misconfigs semeadas de propósito; elas devem aparecer
+  # no relatório, mas não derrubar o job.
+  include-non-failures: false
+
+vulnerability:
+  type:
+    - os
+    - library
+
+# Achados aceitos ficam em `.trivyignore` (um ID por linha, com comentário e data
+# de revisão), não neste arquivo.

@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: chaos-lab-config
+  namespace: chaos-lab
+data:
+  NODE_ENV: "production"
+  SERVICE_NAME: "chaos-lab-api"
+  METRIC_PATH: "/metrics"
+  OTEL_ENDPOINT: "http://tempo.observability:4318"
+  LOG_LEVEL: "info"

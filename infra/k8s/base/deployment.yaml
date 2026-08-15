@@ -1,0 +1,83 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chaos-lab-api
+  namespace: chaos-lab
+  labels:
+    app.kubernetes.io/name: chaos-lab-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: chaos-lab-api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: chaos-lab-api
+    spec:
+      nodeSelector:
+        workload: backend
+      securityContext:
+        runAsUser: 0
+        runAsNonRoot: false
+      initContainers:
+        - name: migrate
+          image: node:22-slim
+          command: ["pnpm", "db:migrate"]
+      containers:
+        - name: api
+          image: chaos-lab-api:1.0.0
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+              name: http
+          env:
+            - name: POSTGRES_URL
+              valueFrom:
+                secretKeyRef:
+                  name: chaos-lab-secrets
+                  key: postgres-url
+            - name: MONGO_URL
+              valueFrom:
+                secretKeyRef:
+                  name: chaos-lab-secrets
+                  key: mongo-url
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: chaos-lab-secrets
+                  key: jwt-secret
+          envFrom:
+            - configMapRef:
+                name: chaos-lab-config
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "8Gi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 3000
+            initialDelaySeconds: 1
+            periodSeconds: 2
+            timeoutSeconds: 1
+            failureThreshold: 1
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 3000
+            initialDelaySeconds: 0
+            periodSeconds: 5

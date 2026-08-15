@@ -1,0 +1,79 @@
+name: Feature request
+description: Propor uma melhoria ou uma nova capacidade
+title: "[FEAT] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Antes de abrir: procure por Issues abertas ou fechadas com a mesma proposta.
+
+  - type: textarea
+    id: problema
+    attributes:
+      label: Problema
+      description: Que dor ou limitação motiva esta proposta? Descreva a situação, não a solução.
+    validations:
+      required: true
+
+  - type: textarea
+    id: solucao
+    attributes:
+      label: Solução proposta
+      description: O que você gostaria que acontecesse.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternativas
+    attributes:
+      label: Alternativas consideradas
+      description: Outras abordagens avaliadas e por que foram descartadas.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: camada
+    attributes:
+      label: Camada afetada
+      options:
+        - docker
+        - infra
+        - db
+        - scripts
+        - ci
+        - docs
+        - src
+    validations:
+      required: true
+
+  - type: dropdown
+    id: breaking
+    attributes:
+      label: Quebra compatibilidade
+      options:
+        - "não"
+        - "sim"
+        - não sei
+    validations:
+      required: true
+
+  - type: textarea
+    id: contexto
+    attributes:
+      label: Contexto adicional
+      description: "Opcional: referências, exemplos em outros projetos, esboço de API."
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: Procurei por Issues abertas ou fechadas com a mesma proposta.
+          required: true
+        - label: A proposta é compatível com o escopo descrito em `SPEC.md`.
+          required: true
+        - label: Considerei o impacto em testes, documentação e CI.
+          required: true

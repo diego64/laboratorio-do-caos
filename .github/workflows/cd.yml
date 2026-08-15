@@ -1,0 +1,31 @@
+name: CD
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy-render:
+    runs-on: ubuntu-latest
+    environment: production-approved
+    steps:
+      - uses: actions/checkout@v4
+      - name: Disparar deploy no Render
+        run: |
+          curl -X POST \
+            -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
+            "https://api.render.com/v1/services/${{ secrets.RENDER_SERVICE_ID }}/deploys"
+
+      - name: Aguardar propagacao
+        run: sleep 20
+
+      - name: Health check de producao
+        run: |
+          curl --fail --silent --show-error \
+            "https://chaos-lab-api.onrender.com/health"
+
+      - name: Smoke test
+        run: |
+          curl --fail "https://chaos-lab-api.onrender.com/assets" \
+            -H "Authorization: Bearer $API_TOKEN"

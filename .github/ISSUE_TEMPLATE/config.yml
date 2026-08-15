@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Reportar vulnerabilidade de segurança
+    url: https://github.com/diego64/laboratorio-do-caos/security/advisories/new
+    about: Canal privado via GitHub Security Advisories. Não abra Issue pública.
+  - name: Guia de contribuição
+    url: https://github.com/diego64/laboratorio-do-caos/blob/main/.github/CONTRIBUTING.md
+    about: Branches, commits, testes e checklist antes do Pull Request.

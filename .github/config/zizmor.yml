@@ -1,0 +1,25 @@
+# Config do zizmor (auditoria estática de GitHub Actions).
+# NÃO é lido automaticamente neste caminho — o zizmor procura `.github/zizmor.yml`.
+# Para usar:  uvx zizmor --config .github/config/zizmor.yml .github/
+# ou exporte ZIZMOR_CONFIG=.github/config/zizmor.yml
+
+rules:
+  # Ações da própria GitHub e da Actions org podem ser presas por tag;
+  # qualquer terceiro precisa de SHA completo, que é imutável.
+  unpinned-uses:
+    config:
+      policies:
+        actions/*: ref-pin
+        github/*: ref-pin
+        "*": hash-pin
+
+# Achados aceitos entram como `ignore` por regra, com caminho e linha:
+#
+#   rules:
+#     excessive-permissions:
+#       ignore:
+#         - cd.yml:12:5
+#
+# Este repositório tem falhas semeadas de propósito na camada CI/CD
+# (`docs/CATALOGO-DE-FALHAS.md`). Elas devem continuar aparecendo no relatório —
+# não as silencie aqui; corrija o workflow.

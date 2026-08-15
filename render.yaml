@@ -1,0 +1,40 @@
+# ==============================================================================
+#  Render PROPOSITALMENTE QUEBRADO - camada PRD (producao)
+#  Falhas semeadas: PRD-01..PRD-05
+# ==============================================================================
+services:
+  - type: web
+    name: chaos-lab-api
+    runtime: node
+    plan: free
+    region: oregon
+
+    # PRD-02: nenhum build (`pnpm build`) antes do start -> dist/ inexistente
+    buildCommand: npm install
+    startCommand: npm start
+
+    # PRD-01: rota inexistente. A aplicacao expoe /health/live e /health/ready
+    healthCheckPath: /health
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+      # PRD-05: bind em loopback impede o Render de rotear trafego para o processo
+      - key: HOST
+        value: 127.0.0.1
+
+      # PRD-03: Supabase - porta 5432 e a conexao direta (limite baixo, sem pooler).
+      #         Para runtime serverless/containers efemeros use a 6543 (pgbouncer)
+      #         e desabilite prepared statements.
+      - key: POSTGRES_URL
+        value: postgresql://postgres:SENHA@db.PROJETO.supabase.co:5432/postgres
+
+      # PRD-04: Atlas SRV com authSource apontando para o banco da aplicacao
+      #         em vez de "admin", e sem retryWrites/tls explicitos
+      - key: MONGO_URL
+        value: mongodb+srv://USUARIO:SENHA@cluster0.xxxxx.mongodb.net/chaoslab?authSource=chaoslab
+
+      - key: JWT_SECRET
+        sync: false
+      # WEBHOOK_HMAC_SECRET ausente -> boot falha na validacao Zod

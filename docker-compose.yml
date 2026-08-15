@@ -1,0 +1,120 @@
+version: "3"
+
+services:
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: chaos-api
+    env_file:
+      - .env
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+      - mongo
+    volumes:
+      - ./:/app
+    networks:
+      - frontend
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: chaos-postgres
+    environment:
+      POSTGRES_USER: chaos
+      POSTGRES_PASSWORD: chaos
+      POSTGRES_DB: chaos
+    command: ["postgres", "-c", "max_connections=10"]
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./db/migrations:/docker-entrypoint-init.d:ro
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - backend
+
+  mongo:
+    image: mongo:7
+    container_name: chaos-mongo
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: root
+      MONGO_INITDB_DATABASE: chaoslab
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    ports:
+      - "27017:27017"
+    volumes:
+      - ./db/seeds:/docker-entrypoint-init.d:ro
+      - mongodata:/data/db
+    networks:
+      - backend
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: chaos-prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - backend
+
+  grafana:
+    image: grafana/grafana-oss:11.1.0
+    container_name: chaos-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./infra/observability/grafana/provisioning:/etc/grafana/provisioning/datasource:ro
+      - ./infra/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+    networks:
+      - backend
+
+  loki:
+    image: grafana/loki:3.1.0
+    container_name: chaos-loki
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./infra/observability/loki/loki-config.yml:/etc/loki/config.yml:ro
+    command: -config.file=/etc/loki/config.yml
+    networks:
+      - backend
+
+  tempo:
+    image: grafana/tempo:2.5.0
+    container_name: chaos-tempo
+    ports:
+      - "3200:3200"
+      - "4317:4317"
+    volumes:
+      - ./infra/observability/tempo/tempo-config.yml:/etc/tempo/config.yml:ro
+    command: -config.file=/etc/tempo/config.yml
+    networks:
+      - backend
+
+  alloy:
+    image: grafana/alloy:v1.3.0
+    container_name: chaos-alloy
+    volumes:
+      - ./infra/observability/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: run /etc/alloy/config.alloy
+    networks:
+      - backend
+
+volumes:
+  pgdata:
+  mongodata:
+  
+networks:
+  frontend:
+    driver: bridge
+  backend:
+    driver: bridge
