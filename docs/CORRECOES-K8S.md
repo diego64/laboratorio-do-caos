@@ -91,9 +91,19 @@ infra/k8s/
 
 13 recursos renderizados a partir de 12 arquivos.
 
-Depois das correções (seção 15) o inventário passou a ter três arquivos novos —
-`pdb.yaml` no lugar de `pdb.yml`, `statefulset-postgres.yaml` e
-`initdb/00-init-mongo.js` — e o build passou a render 19 recursos.
+Depois das correções (seção 15), três arquivos entraram e um saiu, e o build
+passou a render **19 recursos**:
+
+```
+infra/k8s/base/
+├── pdb.yaml                        renomeado de pdb.yml
+├── statefulset-postgres.yaml       novo - Postgres + 2 Services
+└── initdb/
+    └── 00-init-mongo.js            novo - copia de db/seeds/, ver 15.2
+```
+
+O `Dockerfile` na raiz do projeto também mudou: ganhou o alvo `migrator`, usado
+só pelo initContainer de migração.
 
 ---
 
@@ -786,31 +796,35 @@ multi-stage build foi feito para evitar.
 
 ---
 
-## 12. Ordem de ataque recomendada
+## 12. Ordem de ataque
 
 A ordem importa porque os defeitos se mascaram. Corrigir fora de ordem faz você
-consertar algo e não ver mudança nenhuma no sintoma.
+consertar algo e não ver mudança nenhuma no sintoma — e concluir, errado, que a
+correção não funcionou.
 
-1. **`pdb.yml` → `pdb.yaml`** e desindentar o `spec`. Sem isso nada renderiza e
-   nenhum outro conserto é verificável.
-2. **Adicionar o StatefulSet do Postgres.** É a lacuna estrutural: enquanto não
-   existir, a readiness nunca passa e o Ingress devolve 503 independentemente de
-   qualquer outra correção.
-3. **`mongo-url` → `mongodb-url`** no container `api`. Sem isso o pod nem inicia.
-4. **Renomear o Service** para `chaos-lab-api`, alinhando com o Ingress.
-5. **`OTL_ENABLED` → `OTEL_ENABLED`** e as URLs do Secret para os nomes dos
-   Services.
-6. **ServiceAccount**: campo no nível raiz, remover o namespace, e negar o
-   automount também no PodSpec.
-7. **initContainer**: buildar `scripts/` e invocar o `.js`.
-8. **Mongo**: probes, SA dedicada, credenciais do Secret, imagem para `:8`.
-9. **Overlay**: alvo do patch para `chaos-lab-hpa`, patcheando `minReplicas` e
-   `maxReplicas` juntos.
-10. **metrics-server** no kind, ou remover o HPA do overlay local.
-11. **`enforce-version`** fixado.
+Esta foi a ordem seguida. Todos os passos estão aplicados (seção 15).
 
-Os passos 1 a 4 são o caminho crítico até "a aplicação responde". Do 5 em diante é
-correção de qualidade e segurança.
+| # | Passo | Por que nesta posição |
+|---|---|---|
+| 1 | `pdb.yml` → `pdb.yaml` e `spec` desindentado | Sem isso o kustomize não monta e **nenhum** outro conserto é verificável |
+| 2 | StatefulSet do Postgres | Lacuna estrutural: sem ele a readiness nunca passa e o Ingress devolve 503 independentemente do resto |
+| 3 | `mongo-url` → `mongodb-url` | Sem isso o pod nem inicia — `CreateContainerConfigError` |
+| 4 | Service renomeado para `chaos-lab-api` | Fecha o elo com o Ingress |
+| 5 | `OTL_ENABLED` → `OTEL_ENABLED`; URLs do Secret para os nomes dos Services | Configuração silenciosa: não impede subir, faz funcionar errado |
+| 6 | ServiceAccount: campo no nível raiz, `namespace` removido, automount negado também no `PodSpec` | Segurança |
+| 7 | initContainer: novo alvo `migrator` no Dockerfile | Ver a decisão em 15.2 — **não** foi compilar `scripts/` |
+| 8 | Mongo: probes, SA dedicada, credenciais do Secret, imagem `:8` | Resiliência e segurança |
+| 9 | Overlay: alvo `chaos-lab-hpa`, com `minReplicas` **e** `maxReplicas` | Corrigir só o alvo trocaria defeito silencioso por falha de aplicação |
+| 10 | HPA fixado em `min = max = 1` no overlay local | Alternativa ao metrics-server, que não foi instalado (15.5) |
+| 11 | `enforce-version` fixado em `v1.33` | Impede o critério de endurecer sozinho no upgrade |
+
+Os passos 1 a 4 são o caminho crítico até "a aplicação responde". Do 5 em diante
+é qualidade e segurança.
+
+O passo 7 mudou de rumo durante a execução: o plano original era compilar
+`scripts/` junto com a aplicação, o que exigiria `rootDir: "."` e mudaria o
+layout de `dist/`, quebrando o `CMD` que já está em produção. A alternativa
+adotada isola o problema num alvo de build próprio. Está detalhada em 15.2.
 
 ---
 
@@ -825,13 +839,20 @@ kubectl kustomize infra/k8s/overlays/local
 
 # o patch do overlay realmente aplicou? (pega o no-op silencioso)
 kubectl kustomize infra/k8s/overlays/local | grep -E "maxReplicas|minReplicas"
+# esperado: minReplicas 1, maxReplicas 1
 
 # referências cruzadas
 python3 scripts/check-k8s-refs.py infra/k8s/base
+# esperado: "nenhuma referencia quebrada"
 
 # schema, se houver cluster de teste disponível
 kubectl apply --dry-run=server -k infra/k8s/overlays/local
 ```
+
+Os três primeiros rodam sem cluster nenhum e cobrem as classes de defeito que
+mais custaram tempo aqui: montagem, patch silencioso e referência quebrada. Em
+CI, valem mais do que parecem — `grep maxReplicas` valendo 1 é um teste de uma
+linha que teria pego o `K8S-20` no dia em que foi introduzido.
 
 `--dry-run=server` vale muito mais do que `--dry-run=client`: ele envia ao API
 server, que aplica validação de schema completa, admission controllers e PSA. O
@@ -841,6 +862,12 @@ client-side só decodifica localmente.
 
 ```bash
 kind create cluster --config infra/k8s/kind-cluster.yaml
+
+# as imagens sao locais: sem isto o kubelet nao as encontra
+docker build --target release  -t chaos-lab-api:1.0.0      .
+docker build --target migrator -t chaos-lab-migrator:1.0.0 .
+kind load docker-image chaos-lab-api:1.0.0 chaos-lab-migrator:1.0.0 --name chaos-lab
+
 kubectl apply -k infra/k8s/overlays/local
 
 # o que realmente aconteceu
@@ -869,6 +896,28 @@ kubectl auth can-i --list \
 O teste do token na lista acima é o único jeito confiável de confirmar o achado
 6.2: o arquivo diz `false`, e só o cluster responde se o campo teve efeito.
 
+### 13.3 Pelo Ingress
+
+O Ingress exige um controller, que o kind não traz. Instalando e testando:
+
+```bash
+kubectl apply -f https://kubernetes.github.io/ingress-nginx/deploy/static/provider/kind/deploy.yaml
+
+# o controller precisa cair no no que tem extraPortMappings. O manifesto atual
+# do ingress-nginx nao traz mais o nodeSelector ingress-ready, entao ele vai
+# parar no worker e a porta 80 do host nao responde:
+kubectl patch deployment ingress-nginx-controller -n ingress-nginx --type=json -p='[
+  {"op":"add","path":"/spec/template/spec/nodeSelector/ingress-ready","value":"true"},
+  {"op":"add","path":"/spec/template/spec/tolerations","value":[
+    {"key":"node-role.kubernetes.io/control-plane","operator":"Exists","effect":"NoSchedule"}]}]'
+
+curl -H "Host: chaos-lab.local" http://127.0.0.1/health/ready
+```
+
+Note a URL fixada numa versão em vez de `main`: o próprio `CONTRIBUTING.md`
+pede tags imutáveis, e foi justamente o `main` que trouxe a surpresa do
+`nodeSelector` ausente durante a validação (15.5).
+
 ---
 
 ## 14. Conceitos para reler
@@ -895,6 +944,13 @@ Resumo do que este documento ensina, destacado do contexto específico.
 | `readOnlyRootFilesystem` exige `emptyDir` no que precisa escrever | Seção 10 |
 | `targetPort` por **nome** torna divergência de porta impossível de reintroduzir | Seção 10 |
 | Um defeito que mascara outro: a correção do primeiro precisa antecipar o segundo | Seção 5.1 |
+| `timeoutSeconds` de probe é **1 segundo** por padrão — comando pesado como `mongosh` nunca cabe | Seção 15.4 |
+| Probe `exec` custa um processo por ciclo; `tcpSocket` basta para detectar processo morto | Seção 15.4 |
+| initContainer que falha é reiniciado: falha na primeira tentativa pode ser só corrida com a dependência | Seção 15.4 |
+| Erro genérico de dependência esconde a causa — "indisponível" não distingue subindo de credencial errada | Seção 15.4 |
+| Kustomize recusa ler arquivo fora da própria raiz; `--load-restrictor` contorna e vira footgun | Seção 15.2 |
+| `kindnet` não implementa NetworkPolicy: a política existe no cluster e fica inerte | Seção 15.5 |
+| Manifesto de terceiro em `main` muda sem aviso — fixar versão vale para YAML, não só para imagem | Seção 15.5 |
 
 ---
 
