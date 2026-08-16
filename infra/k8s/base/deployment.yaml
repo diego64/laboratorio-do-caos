@@ -2,7 +2,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: chaos-lab-api
-  namespace: chaos-lab
   labels:
     app.kubernetes.io/name: chaos-lab-api
 spec:
@@ -22,6 +21,9 @@ spec:
         app.kubernetes.io/name: chaos-lab-api
     spec:
       serviceAccountName: chaos-lab-api
+      # redundante com o ServiceAccount de proposito: o PodSpec vence, e se
+      # alguem corrigir um lado e esquecer o outro, ainda fica negado
+      automountServiceAccountToken: false
       terminationGracePeriodSeconds: 30
       securityContext:
         runAsNonRoot: true
@@ -31,9 +33,11 @@ spec:
           type: RuntimeDefault
       initContainers:
         - name: migrate
-          image: chaos-lab-api:1.0.0
+          # imagem propria: a release nao tem tsx (devDependency) nem scripts/.
+          # Embutir o compilador na imagem de producao anularia o multi-stage.
+          image: chaos-lab-migrator:1.0.0
           imagePullPolicy: IfNotPresent
-          command: ["node", "dist/../node_modules/.bin/tsx", "scripts/migrate.ts"]
+          command: ["./node_modules/.bin/tsx", "scripts/migrate.ts"]
           envFrom:
             - configMapRef: { name: chaos-lab-config }
           env:
@@ -49,6 +53,9 @@ spec:
             - name: WEBHOOK_HMAC_SECRET
               valueFrom:
                 secretKeyRef: { name: chaos-lab-secrets, key: hmac-secret }
+          resources:
+            requests: { cpu: "50m", memory: "128Mi" }
+            limits: { cpu: "500m", memory: "512Mi" }
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -69,7 +76,10 @@ spec:
                 secretKeyRef: { name: chaos-lab-secrets, key: postgres-url }
             - name: MONGO_URL
               valueFrom:
-                secretKeyRef: { name: chaos-lab-secrets, key: mongo-url }
+                # era mongo-url: chave inexistente no Secret. O sintoma e
+                # CreateContainerConfigError - o container nem chega a iniciar,
+                # entao kubectl logs nao mostra nada.
+                secretKeyRef: { name: chaos-lab-secrets, key: mongodb-url }
             - name: JWT_SECRET
               valueFrom:
                 secretKeyRef: { name: chaos-lab-secrets, key: jwt-secret }
@@ -78,7 +88,7 @@ spec:
                 secretKeyRef: { name: chaos-lab-secrets, key: hmac-secret }
           resources:
             requests: { cpu: "100m", memory: "128Mi" }
-            limits:   { cpu: "500m", memory: "512Mi" }
+            limits: { cpu: "500m", memory: "512Mi" }
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -100,5 +110,6 @@ spec:
           volumeMounts:
             - { name: tmp, mountPath: /tmp }
       volumes:
+        # raiz somente-leitura exige um lugar para escrever temporario
         - name: tmp
           emptyDir: {}

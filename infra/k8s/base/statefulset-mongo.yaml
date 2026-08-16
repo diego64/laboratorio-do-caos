@@ -2,30 +2,27 @@ apiVersion: v1
 kind: Service
 metadata:
   name: mongo-headless
-  namespace: chaos-lab
 spec:
   clusterIP: None
   selector:
     app.kubernetes.io/name: mongo
   ports:
-    - { name: mongo, port: 27017, targetPort: 27017 }
+    - { name: mongo, port: 27017, targetPort: mongo }
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: mongo
-  namespace: chaos-lab
 spec:
   selector:
     app.kubernetes.io/name: mongo
   ports:
-    - { name: mongo, port: 27017, targetPort: 27017 }
+    - { name: mongo, port: 27017, targetPort: mongo }
 ---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: mongo
-  namespace: chaos-lab
 spec:
   serviceName: mongo-headless
   replicas: 1
@@ -37,27 +34,73 @@ spec:
       labels:
         app.kubernetes.io/name: mongo
     spec:
+      serviceAccountName: mongo
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 999
+        runAsGroup: 999
         fsGroup: 999
         seccompProfile: { type: RuntimeDefault }
       containers:
         - name: mongo
-          image: mongo:7
+          # alinhado com o compose, que ja subiu para 8
+          image: mongo:8
+          args: ["mongod", "--bind_ip_all"]
           ports:
-            - { containerPort: 27017 }
+            - { containerPort: 27017, name: mongo }
           env:
-            - { name: MONGO_INITDB_ROOT_USERNAME, value: chaos }
-            - { name: MONGO_INITDB_ROOT_PASSWORD, value: chaos }
+            # credencial vem do Secret, como no resto da stack - nao literal
+            - name: MONGO_INITDB_ROOT_USERNAME
+              valueFrom:
+                secretKeyRef: { name: chaos-lab-secrets, key: mongo-root-username }
+            - name: MONGO_INITDB_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: chaos-lab-secrets, key: mongo-root-password }
+            - name: MONGO_INITDB_DATABASE
+              valueFrom:
+                secretKeyRef: { name: chaos-lab-secrets, key: mongo-database }
+            # consumidas por 00-init-mongo.js para criar o usuario da aplicacao
+            - name: MONGO_APP_USERNAME
+              valueFrom:
+                secretKeyRef: { name: chaos-lab-secrets, key: mongo-app-username }
+            - name: MONGO_APP_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: chaos-lab-secrets, key: mongo-app-password }
           resources:
             requests: { cpu: "100m", memory: "256Mi" }
-            limits:   { cpu: "1",    memory: "1Gi" }
+            limits: { cpu: "1", memory: "1Gi" }
           securityContext:
             allowPrivilegeEscalation: false
             capabilities: { drop: ["ALL"] }
+          # mongosh e um CLI em Node: leva segundos so para subir. Com o
+          # timeoutSeconds padrao (1s) as duas probes estouram sempre, e a
+          # liveness passa a matar um container saudavel em loop.
+          readinessProbe:
+            exec:
+              command: ["mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 10
+            failureThreshold: 6
+          # liveness por TCP: barata e suficiente para detectar processo morto,
+          # sem gastar um processo Node a cada ciclo
+          livenessProbe:
+            tcpSocket: { port: mongo }
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
           volumeMounts:
             - { name: data, mountPath: /data/db }
+            - { name: initdb, mountPath: /docker-entrypoint-initdb.d, readOnly: true }
+      volumes:
+        # mesmo script do compose: cria o usuario da aplicacao em chaoslab, e
+        # nao em admin, para que ele fique restrito a readWrite no proprio banco
+        - name: initdb
+          configMap:
+            name: mongo-initdb
+            defaultMode: 0555
   volumeClaimTemplates:
     - metadata:
         name: data
@@ -66,4 +109,4 @@ spec:
         storageClassName: standard
         resources:
           requests:
-            storage: 5Gi
+            storage: 2Gi

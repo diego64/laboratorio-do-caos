@@ -11,6 +11,20 @@ COPY tsconfig.json tsconfig.build.json ./
 COPY src ./src
 RUN pnpm build
 
+# Imagem separada para migracao. A release nao serve: tsx e devDependency e
+# scripts/ nao e copiado para la. Embutir o compilador na imagem de producao
+# para rodar migracao anularia o proposito do multi-stage - por isso um alvo
+# proprio, que so o initContainer do Kubernetes usa.
+FROM deps AS migrator
+ENV NODE_ENV=production
+COPY tsconfig.json ./
+COPY src ./src
+COPY scripts ./scripts
+COPY db ./db
+USER node
+ENTRYPOINT ["dumb-init", "--"]
+CMD ["./node_modules/.bin/tsx", "scripts/migrate.ts"]
+
 FROM base AS prod-deps
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile --prod
