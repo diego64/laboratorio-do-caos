@@ -7,10 +7,10 @@ distributor:
       protocols:
         grpc:
           endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
 
-ingester:
-  max_block_duration: 5m
-
+# Tempo 3.x removeu o bloco `ingester` de topo (app.Config nao tem mais o campo).
 storage:
   trace:
     backend: local

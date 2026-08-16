@@ -129,7 +129,8 @@ Instale antes de começar — metade das falhas é detectável estaticamente:
 
 ```bash
 hadolint Dockerfile                                    # lint de Dockerfile
-docker compose config                                  # validação do compose
+cd docker && docker compose --env-file ../.env config   # validação do compose
+# o compose vive em docker/ e o .env na raiz: o --env-file é obrigatório
 promtool check config infra/observability/prometheus/prometheus.yml
 promtool check rules  infra/observability/prometheus/rules/*.yml
 kubeconform -strict -summary infra/k8s/base/*.yaml     # validação de manifestos

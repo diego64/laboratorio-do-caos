@@ -1,0 +1,304 @@
+{
+  "uid": "chaos-environment",
+  "title": "4. Ambiente - stack completa",
+  "description": "Visao unica de todo o laboratorio: quem esta de pe, quem esta alertando, consumo de recursos e o fluxo de logs de todos os containers.",
+  "tags": ["chaos-lab", "ambiente"],
+  "timezone": "browser",
+  "editable": true,
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "time": { "from": "now-1h", "to": "now" },
+  "annotations": {
+    "list": [
+      {
+        "name": "Alertas disparados",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "enable": true,
+        "iconColor": "red",
+        "expr": "ALERTS{alertstate=\"firing\"}",
+        "titleFormat": "{{alertname}}"
+      }
+    ]
+  },
+  "templating": { "list": [] },
+  "panels": [
+    {
+      "type": "row",
+      "title": "Estado do laboratorio",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "panels": []
+    },
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Alvos monitorados",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0, "color": { "mode": "fixed", "fixedColor": "text" } }, "overrides": [] },
+      "options": { "graphMode": "none", "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{ "refId": "A", "expr": "count(up)" }]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Alvos fora do ar",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] }
+        },
+        "overrides": []
+      },
+      "options": { "graphMode": "none", "colorMode": "background", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{ "refId": "A", "expr": "count(up == 0) or vector(0)" }]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Alertas disparando",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] }
+        },
+        "overrides": []
+      },
+      "options": { "graphMode": "none", "colorMode": "background", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{ "refId": "A", "expr": "count(ALERTS{alertstate=\"firing\"}) or vector(0)" }]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Dependencias da API",
+      "description": "Quantas das dependencias declaradas o /health considera saudaveis.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "max": 2,
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 1 }, { "color": "green", "value": 2 }] }
+        },
+        "overrides": []
+      },
+      "options": { "graphMode": "none", "colorMode": "background", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value_and_name" },
+      "targets": [{ "refId": "A", "expr": "sum(dependency_up)" }]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Series ativas no Prometheus",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] },
+      "options": { "graphMode": "area", "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{ "refId": "A", "expr": "prometheus_tsdb_head_series" }]
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Log ingerido",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "logs/s", "decimals": 1 }, "overrides": [] },
+      "options": { "graphMode": "area", "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{ "refId": "A", "expr": "sum(rate({stack=\"laboratorio-do-caos\"}[$__auto]))" }]
+    },
+    {
+      "id": 10,
+      "type": "state-timeline",
+      "title": "Disponibilidade por servico",
+      "description": "Linha do tempo de up/down de cada alvo raspado. E aqui que o caos aparece.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 9, "w": 16, "x": 0, "y": 5 },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "lineWidth": 0, "fillOpacity": 90 },
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "FORA", "color": "red", "index": 0 }, "1": { "text": "UP", "color": "green", "index": 1 } } }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+        },
+        "overrides": []
+      },
+      "options": { "mergeValues": true, "showValue": "never", "legend": { "displayMode": "list", "placement": "bottom", "showLegend": false } },
+      "targets": [
+        { "refId": "A", "expr": "up", "legendFormat": "{{job}}" },
+        { "refId": "B", "expr": "dependency_up", "legendFormat": "app -> {{dependency}}" }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "table",
+      "title": "Alvos do Prometheus",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 9, "w": 8, "x": 16, "y": 5 },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "FORA", "color": "red", "index": 0 }, "1": { "text": "UP", "color": "green", "index": 1 } } }
+          ],
+          "custom": { "cellOptions": { "type": "color-background" } },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+        },
+        "overrides": []
+      },
+      "options": { "sortBy": [{ "displayName": "Estado", "desc": false }] },
+      "targets": [{ "refId": "A", "expr": "up", "instant": true, "format": "table" }],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time": true, "__name__": true, "service": true, "version": true },
+            "renameByName": { "Value": "Estado", "job": "Job", "instance": "Instancia" }
+          }
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Recursos dos processos",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 },
+      "panels": []
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "Memoria residente por servico",
+      "description": "Nao e memoria de container (isso exigiria cAdvisor) - e a RSS do processo exportado por cada alvo.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 15 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "right", "showLegend": true, "calcs": ["mean", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "refId": "A", "expr": "sum by (job) (process_resident_memory_bytes)", "legendFormat": "{{job}}" },
+        { "refId": "B", "expr": "nodejs_process_resident_memory_bytes", "legendFormat": "chaos-lab-api" }
+      ]
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "CPU por servico",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 15 },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "right", "showLegend": true, "calcs": ["mean", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "refId": "A", "expr": "sum by (job) (rate(process_cpu_seconds_total[$__rate_interval]))", "legendFormat": "{{job}}" },
+        { "refId": "B", "expr": "rate(nodejs_process_cpu_seconds_total[$__rate_interval])", "legendFormat": "chaos-lab-api" }
+      ]
+    },
+    {
+      "id": 22,
+      "type": "timeseries",
+      "title": "Heap do Node (API)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 23 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "nodejs_nodejs_heap_size_used_bytes", "legendFormat": "usado" },
+        { "refId": "B", "expr": "nodejs_nodejs_heap_size_total_bytes", "legendFormat": "total" }
+      ]
+    },
+    {
+      "id": 23,
+      "type": "timeseries",
+      "title": "Event loop lag (API)",
+      "description": "Lag alto = o processo Node esta bloqueado e nenhuma rota responde bem, independente do banco.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 23 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": { "fillOpacity": 10, "lineWidth": 2, "thresholdsStyle": { "mode": "dashed" } },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "transparent", "value": null }, { "color": "red", "value": 0.1 }] }
+        },
+        "overrides": []
+      },
+      "targets": [
+        { "refId": "A", "expr": "nodejs_nodejs_eventloop_lag_p50_seconds", "legendFormat": "p50" },
+        { "refId": "B", "expr": "nodejs_nodejs_eventloop_lag_p99_seconds", "legendFormat": "p99" },
+        { "refId": "C", "expr": "nodejs_nodejs_eventloop_lag_max_seconds", "legendFormat": "max" }
+      ]
+    },
+    {
+      "id": 24,
+      "type": "timeseries",
+      "title": "File descriptors abertos (API)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 23 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "nodejs_process_open_fds", "legendFormat": "abertos" },
+        { "refId": "B", "expr": "nodejs_process_max_fds", "legendFormat": "limite" }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Logs de toda a stack",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 30 },
+      "panels": []
+    },
+    {
+      "id": 30,
+      "type": "timeseries",
+      "title": "Volume de log por servico",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 31 },
+      "fieldConfig": {
+        "defaults": { "unit": "logs/s", "custom": { "drawStyle": "bars", "fillOpacity": 70, "lineWidth": 0, "stacking": { "mode": "normal", "group": "A" } } },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "table", "placement": "right", "showLegend": true, "calcs": ["mean", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "refId": "A", "expr": "sum by (service) (rate({stack=\"laboratorio-do-caos\"}[$__auto]))", "legendFormat": "{{service}}" }
+      ]
+    },
+    {
+      "id": 31,
+      "type": "timeseries",
+      "title": "Linhas de erro por servico",
+      "description": "Varredura textual por error/fatal/panic em todos os containers - pega ate quem nao loga estruturado.",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 31 },
+      "fieldConfig": {
+        "defaults": { "unit": "logs/s", "custom": { "drawStyle": "bars", "fillOpacity": 70, "lineWidth": 0, "stacking": { "mode": "normal", "group": "A" } }, "color": { "mode": "palette-classic" } },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "table", "placement": "right", "showLegend": true, "calcs": ["mean", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (service) (rate({stack=\"laboratorio-do-caos\"} |~ `(?i)\\b(error|fatal|panic)\\b` [$__auto]))",
+          "legendFormat": "{{service}}"
+        }
+      ]
+    },
+    {
+      "id": 32,
+      "type": "logs",
+      "title": "Logs de todos os containers",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 14, "w": 24, "x": 0, "y": 38 },
+      "options": {
+        "showTime": true,
+        "showLabels": true,
+        "wrapLogMessage": true,
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "sortOrder": "Descending"
+      },
+      "targets": [{ "refId": "A", "expr": "{stack=\"laboratorio-do-caos\"}" }]
+    }
+  ]
+}

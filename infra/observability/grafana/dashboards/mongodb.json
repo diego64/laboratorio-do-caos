@@ -1,0 +1,293 @@
+{
+  "uid": "chaos-mongodb",
+  "title": "3. MongoDB",
+  "description": "Saude e carga do MongoDB, via mongodb-exporter, cruzada com a visao da aplicacao (dependency_up).",
+  "tags": ["chaos-lab", "banco"],
+  "timezone": "browser",
+  "editable": true,
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "time": { "from": "now-1h", "to": "now" },
+  "annotations": {
+    "list": [
+      {
+        "name": "Alertas disparados",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "enable": true,
+        "iconColor": "red",
+        "expr": "ALERTS{alertstate=\"firing\"}",
+        "titleFormat": "{{alertname}}"
+      }
+    ]
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "database",
+        "label": "Database",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": { "query": "label_values(mongodb_dbstats_dataSize, database)", "refId": "A" },
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "current": { "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "row",
+      "title": "Disponibilidade",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "panels": []
+    },
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "MongoDB up",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "FORA", "color": "red", "index": 0 }, "1": { "text": "UP", "color": "green", "index": 1 } } }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+        },
+        "overrides": []
+      },
+      "options": { "graphMode": "none", "colorMode": "background", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{ "refId": "A", "expr": "max(mongodb_up)" }]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Visao da aplicacao",
+      "description": "dependency_up{dependency=\"mongodb\"} - o que o /health da API enxerga.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "FORA", "color": "red", "index": 0 }, "1": { "text": "OK", "color": "green", "index": 1 } } }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+        },
+        "overrides": []
+      },
+      "options": { "graphMode": "none", "colorMode": "background", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{ "refId": "A", "expr": "dependency_up{dependency=\"mongodb\"}" }]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Uptime",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "s", "decimals": 0 }, "overrides": [] },
+      "options": { "graphMode": "none", "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{ "refId": "A", "expr": "max(mongodb_instance_uptime_seconds)" }]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Conexoes abertas",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] },
+      "options": { "graphMode": "area", "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{ "refId": "A", "expr": "max(mongodb_connections{state=\"current\"})" }]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Memoria residente",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "decmbytes", "decimals": 0 }, "overrides": [] },
+      "options": { "graphMode": "area", "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{ "refId": "A", "expr": "max(mongodb_memory{type=\"resident\"})" }]
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Documentos",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] },
+      "options": { "graphMode": "area", "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{ "refId": "A", "expr": "sum(mongodb_dbstats_objects{database=~\"$database\"})" }]
+    },
+    {
+      "type": "row",
+      "title": "Operacoes",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "panels": []
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Operacoes por segundo",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "fieldConfig": {
+        "defaults": { "unit": "ops", "custom": { "fillOpacity": 30, "lineWidth": 1, "stacking": { "mode": "normal", "group": "A" } } },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true, "calcs": ["mean", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "refId": "A", "expr": "sum by (type) (rate(mongodb_op_counters_total[$__rate_interval]))", "legendFormat": "{{type}}" }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Latencia media por tipo de operacao",
+      "description": "latencyStats: microssegundos acumulados / operacoes.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "fieldConfig": { "defaults": { "unit": "µs", "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true, "calcs": ["mean", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(mongodb_collstats_latencyStats_reads_latency{database=~\"$database\"}[$__rate_interval])) / clamp_min(sum(rate(mongodb_collstats_latencyStats_reads_ops{database=~\"$database\"}[$__rate_interval])), 0.0001)",
+          "legendFormat": "leitura"
+        },
+        {
+          "refId": "B",
+          "expr": "sum(rate(mongodb_collstats_latencyStats_writes_latency{database=~\"$database\"}[$__rate_interval])) / clamp_min(sum(rate(mongodb_collstats_latencyStats_writes_ops{database=~\"$database\"}[$__rate_interval])), 0.0001)",
+          "legendFormat": "escrita"
+        },
+        {
+          "refId": "C",
+          "expr": "sum(rate(mongodb_collstats_latencyStats_commands_latency{database=~\"$database\"}[$__rate_interval])) / clamp_min(sum(rate(mongodb_collstats_latencyStats_commands_ops{database=~\"$database\"}[$__rate_interval])), 0.0001)",
+          "legendFormat": "comando"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Conexoes",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 14 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "mongodb_connections{state=\"current\"}", "legendFormat": "abertas" },
+        { "refId": "B", "expr": "mongodb_connections{state=\"active\"}", "legendFormat": "ativas" },
+        { "refId": "C", "expr": "rate(mongodb_connections{state=\"totalCreated\"}[$__rate_interval])", "legendFormat": "novas/s" }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Fila do global lock",
+      "description": "Fila acima de zero de forma sustentada = contencao de lock.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 14 },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "drawStyle": "bars", "fillOpacity": 70, "stacking": { "mode": "normal", "group": "A" } } },
+        "overrides": []
+      },
+      "targets": [
+        { "refId": "A", "expr": "mongodb_mongod_global_lock_current_queue{type!=\"total\"}", "legendFormat": "{{type}}" }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Cache do WiredTiger",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 14 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "mongodb_mongod_wiredtiger_cache_bytes{type=\"total\"}", "legendFormat": "em uso" },
+        { "refId": "B", "expr": "mongodb_mongod_wiredtiger_cache_max_bytes", "legendFormat": "maximo configurado" }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Armazenamento e dominio",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 22 },
+      "panels": []
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "Tamanho por database",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 23 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "mongodb_dbstats_dataSize{database=~\"$database\"}", "legendFormat": "dados {{database}}" },
+        { "refId": "B", "expr": "mongodb_dbstats_indexSize{database=~\"$database\"}", "legendFormat": "indices {{database}}" }
+      ]
+    },
+    {
+      "id": 21,
+      "type": "table",
+      "title": "Databases",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 23 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [
+        { "matcher": { "id": "byName", "options": "Dados" }, "properties": [{ "id": "unit", "value": "bytes" }] },
+        { "matcher": { "id": "byName", "options": "Indices" }, "properties": [{ "id": "unit", "value": "bytes" }] }
+      ] },
+      "targets": [
+        { "refId": "A", "expr": "mongodb_dbstats_objects", "instant": true, "format": "table" },
+        { "refId": "B", "expr": "mongodb_dbstats_dataSize", "instant": true, "format": "table" },
+        { "refId": "C", "expr": "mongodb_dbstats_indexSize", "instant": true, "format": "table" }
+      ],
+      "transformations": [
+        { "id": "joinByField", "options": { "byField": "database", "mode": "outer" } },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time": true, "Time 1": true, "Time 2": true, "Time 3": true, "__name__ 1": true, "__name__ 2": true, "__name__ 3": true, "cl_id 1": true, "cl_id 2": true, "cl_id 3": true, "cl_role 1": true, "cl_role 2": true, "cl_role 3": true, "instance 1": true, "instance 2": true, "instance 3": true, "job 1": true, "job 2": true, "job 3": true },
+            "renameByName": { "database": "Database", "Value #A": "Documentos", "Value #B": "Dados", "Value #C": "Indices" }
+          }
+        }
+      ]
+    },
+    {
+      "id": 22,
+      "type": "timeseries",
+      "title": "Leituras ingeridas pela API",
+      "description": "readings_ingested_total - a escrita que a aplicacao acredita ter feito. Compare com o insert/s do painel de operacoes.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 23 },
+      "fieldConfig": { "defaults": { "unit": "ops", "custom": { "fillOpacity": 20, "lineWidth": 2 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum by (tipo) (rate(readings_ingested_total[$__rate_interval]))", "legendFormat": "{{tipo}}" }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Logs do MongoDB",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 30 },
+      "panels": []
+    },
+    {
+      "id": 30,
+      "type": "logs",
+      "title": "Logs do container mongo",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 31 },
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": true,
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "sortOrder": "Descending"
+      },
+      "targets": [{ "refId": "A", "expr": "{service=\"mongo\"}" }]
+    }
+  ]
+}

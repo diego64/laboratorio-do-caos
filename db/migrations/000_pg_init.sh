@@ -4,9 +4,9 @@
 # Consumido por    : entrypoint do container postgres
 # Regra            : Executa apenas com o volume de dados vazio.
 #
-# PG-03 (falha semeada): cria a extensao no database "postgres" e nao no database
-# da aplicacao; alem disso o nome do database aqui diverge do POSTGRES_DB do compose.
+# O database da aplicacao ja e criado pelo entrypoint a partir de POSTGRES_DB;
+# aqui basta garantir a extensao dentro dele, e nao no database "postgres".
 set -e
-psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "postgres" <<-SQL
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-SQL
   CREATE EXTENSION IF NOT EXISTS pgcrypto;
 SQL

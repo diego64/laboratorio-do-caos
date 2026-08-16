@@ -7,17 +7,23 @@ datasources:
     uid: prometheus
     url: http://prometheus:9090
     isDefault: true
+    jsonData:
+      httpMethod: POST
+      # clicar num ponto do grafico de latencia leva direto ao trace daquela requisicao
+      exemplarTraceIdDestinations:
+        - name: trace_id
+          datasourceUid: tempo
 
   - name: Loki
     type: loki
     access: proxy
     uid: loki
-    url: http://loki:3100/loki
+    url: http://loki:3100
     jsonData:
       derivedFields:
         - name: TraceID
           matcherRegex: "trace_id=(\\w+)"
-          datasourceUid: tempo-traces
+          datasourceUid: tempo
           url: "$${__value.raw}"
 
   - name: Tempo
@@ -25,3 +31,16 @@ datasources:
     access: proxy
     uid: tempo
     url: http://tempo:3200
+    jsonData:
+      # do trace para os logs do mesmo container, e do trace para as metricas RED
+      tracesToLogsV2:
+        datasourceUid: loki
+        spanStartTimeShift: -5m
+        spanEndTimeShift: 5m
+        filterByTraceID: true
+        tags: [{ key: service.name, value: service }]
+      tracesToMetrics:
+        datasourceUid: prometheus
+        tags: [{ key: service.name, value: service }]
+      serviceMap:
+        datasourceUid: prometheus
