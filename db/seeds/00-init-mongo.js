@@ -3,14 +3,23 @@
 // Consumido por    : entrypoint do container mongo (docker-entrypoint-initdb.d)
 // Regra            : Idempotente. Roda uma unica vez, no primeiro boot com volume vazio.
 //
-// MGO-04 (falha semeada): o usuario e criado no banco "chaoslab", mas a aplicacao
-// autentica sem authSource, o que faz o driver procurar as credenciais em "admin".
-db = db.getSiblingDB('chaoslab');
+// O usuario vive em "chaoslab", entao a aplicacao precisa conectar com
+// authSource=chaoslab. Manter o usuario aqui (e nao em "admin") preserva o
+// menor privilegio: ele so tem readWrite no proprio banco.
+const banco = process.env.MONGO_INITDB_DATABASE;
+const usuario = process.env.MONGO_APP_USERNAME;
+const senha = process.env.MONGO_APP_PASSWORD;
+
+if (!banco || !usuario || !senha) {
+  throw new Error('MONGO_INITDB_DATABASE, MONGO_APP_USERNAME e MONGO_APP_PASSWORD sao obrigatorias');
+}
+
+db = db.getSiblingDB(banco);
 
 db.createUser({
-  user: 'chaos',
-  pwd: 'chaos',
-  roles: [{ role: 'readWrite', db: 'chaoslab' }],
+  user: usuario,
+  pwd: senha,
+  roles: [{ role: 'readWrite', db: banco }],
 });
 
 db.createCollection('readings');
