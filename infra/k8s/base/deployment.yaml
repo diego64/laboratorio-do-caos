@@ -2,82 +2,114 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: chaos-lab-api
-  namespace: chaos-lab
   labels:
     app.kubernetes.io/name: chaos-lab-api
 spec:
   replicas: 2
+  revisionHistoryLimit: 5
   selector:
     matchLabels:
       app.kubernetes.io/name: chaos-lab-api
   strategy:
     type: RollingUpdate
     rollingUpdate:
-      maxUnavailable: 1
-      maxSurge: 0
+      maxUnavailable: 0
+      maxSurge: 1
   template:
     metadata:
       labels:
         app.kubernetes.io/name: chaos-lab-api
     spec:
-      nodeSelector:
-        workload: backend
+      serviceAccountName: chaos-lab-api
+      # redundante com o ServiceAccount de proposito: o PodSpec vence, e se
+      # alguem corrigir um lado e esquecer o outro, ainda fica negado
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
       securityContext:
-        runAsUser: 0
-        runAsNonRoot: false
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       initContainers:
         - name: migrate
-          image: node:22-slim
-          command: ["pnpm", "db:migrate"]
-      containers:
-        - name: api
-          image: chaos-lab-api:1.0.0
-          imagePullPolicy: Always
-          ports:
-            - containerPort: 3000
-              name: http
+          # imagem propria: a release nao tem tsx (devDependency) nem scripts/.
+          # Embutir o compilador na imagem de producao anularia o multi-stage.
+          image: chaos-lab-migrator:1.0.0
+          imagePullPolicy: IfNotPresent
+          command: ["./node_modules/.bin/tsx", "scripts/migrate.ts"]
+          envFrom:
+            - configMapRef: { name: chaos-lab-config }
           env:
             - name: POSTGRES_URL
               valueFrom:
-                secretKeyRef:
-                  name: chaos-lab-secrets
-                  key: postgres-url
+                secretKeyRef: { name: chaos-lab-secrets, key: postgres-url }
             - name: MONGO_URL
               valueFrom:
-                secretKeyRef:
-                  name: chaos-lab-secrets
-                  key: mongo-url
+                secretKeyRef: { name: chaos-lab-secrets, key: mongodb-url }
             - name: JWT_SECRET
               valueFrom:
-                secretKeyRef:
-                  name: chaos-lab-secrets
-                  key: jwt-secret
-          envFrom:
-            - configMapRef:
-                name: chaos-lab-config
+                secretKeyRef: { name: chaos-lab-secrets, key: jwt-secret }
+            - name: WEBHOOK_HMAC_SECRET
+              valueFrom:
+                secretKeyRef: { name: chaos-lab-secrets, key: hmac-secret }
           resources:
-            requests:
-              cpu: "100m"
-              memory: "8Gi"
-            limits:
-              cpu: "200m"
-              memory: "128Mi"
+            requests: { cpu: "50m", memory: "128Mi" }
+            limits: { cpu: "500m", memory: "512Mi" }
           securityContext:
-            readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
-            capabilities:
-              drop: ["ALL"]
-          livenessProbe:
-            httpGet:
-              path: /healthz
-              port: 3000
-            initialDelaySeconds: 1
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      containers:
+        - name: api
+          image: chaos-lab-api:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - { containerPort: 3000, name: http, protocol: TCP }
+          envFrom:
+            - configMapRef: { name: chaos-lab-config }
+          env:
+            - name: POSTGRES_URL
+              valueFrom:
+                secretKeyRef: { name: chaos-lab-secrets, key: postgres-url }
+            - name: MONGO_URL
+              valueFrom:
+                # era mongo-url: chave inexistente no Secret. O sintoma e
+                # CreateContainerConfigError - o container nem chega a iniciar,
+                # entao kubectl logs nao mostra nada.
+                secretKeyRef: { name: chaos-lab-secrets, key: mongodb-url }
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef: { name: chaos-lab-secrets, key: jwt-secret }
+            - name: WEBHOOK_HMAC_SECRET
+              valueFrom:
+                secretKeyRef: { name: chaos-lab-secrets, key: hmac-secret }
+          resources:
+            requests: { cpu: "100m", memory: "128Mi" }
+            limits: { cpu: "500m", memory: "512Mi" }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          startupProbe:
+            httpGet: { path: /health/live, port: http }
+            failureThreshold: 30
             periodSeconds: 2
-            timeoutSeconds: 1
-            failureThreshold: 1
+          livenessProbe:
+            httpGet: { path: /health/live, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
           readinessProbe:
-            httpGet:
-              path: /health/ready
-              port: 3000
-            initialDelaySeconds: 0
+            httpGet: { path: /health/ready, port: http }
+            initialDelaySeconds: 5
             periodSeconds: 5
+            failureThreshold: 3
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        # raiz somente-leitura exige um lugar para escrever temporario
+        - name: tmp
+          emptyDir: {}

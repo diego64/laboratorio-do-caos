@@ -4,4 +4,7 @@ metadata:
   name: chaos-lab
   labels:
     pod-security.kubernetes.io/enforce: restricted
-    pod-security.kubernetes.io/enforce-version: latest
+    # versao fixa de proposito: o PSA versiona os perfis, e "latest" faz o
+    # criterio endurecer sozinho no dia do upgrade do cluster, sem que nenhum
+    # arquivo daqui mude.
+    pod-security.kubernetes.io/enforce-version: v1.33

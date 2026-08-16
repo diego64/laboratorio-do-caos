@@ -1,13 +1,31 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: chaos-lab
+
 resources:
   - ../../base
+
 patches:
   - target:
       kind: Deployment
-      name: chaos-api
+      name: chaos-lab-api
     patch: |-
       - op: replace
         path: /spec/replicas
+        value: 1
+
+  # o alvo era chaos-lab-api, nome que o HPA nao tem: o kustomize ignora target
+  # sem correspondencia SEM ERRO, entao o patch evaporava e maxReplicas ficava 10.
+  # minReplicas entra junto porque maxReplicas menor que minReplicas e rejeitado
+  # pelo API server - corrigir so o alvo trocaria um defeito silencioso por uma
+  # falha de aplicacao.
+  - target:
+      kind: HorizontalPodAutoscaler
+      name: chaos-lab-hpa
+    patch: |-
+      - op: replace
+        path: /spec/minReplicas
+        value: 1
+      - op: replace
+        path: /spec/maxReplicas
         value: 1

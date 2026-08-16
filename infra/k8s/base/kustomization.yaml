@@ -1,15 +1,29 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: chaos-lab
+
 resources:
   - namespace.yaml
+  - serviceaccount.yaml
   - secret.yaml
   - configmap.yaml
+  - statefulset-postgres.yaml
+  - statefulset-mongo.yaml
   - deployment.yaml
   - service.yaml
   - ingress.yaml
   - networkpolicy.yaml
-  - statefulset-mongo.yaml
-  - hpa.yaml
-  - serviceaccount.yaml
   - pdb.yaml
+  - hpa.yaml
+
+# O kustomize recusa ler arquivo fora da propria raiz (restricao de seguranca,
+# so contornavel com --load-restrictor em toda invocacao), entao initdb/ e uma
+# copia de db/seeds/00-init-mongo.js. Se aquele mudar, este precisa acompanhar.
+#
+# O Postgres nao precisa de equivalente: 001_init.sql ja faz
+# CREATE EXTENSION IF NOT EXISTS pgcrypto, e quem aplica as migracoes aqui e o
+# initContainer, nao o entrypoint da imagem.
+configMapGenerator:
+  - name: mongo-initdb
+    files:
+      - initdb/00-init-mongo.js

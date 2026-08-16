@@ -1,14 +1,19 @@
+# O nome e chaos-lab-api porque e para ele que o Ingress aponta. Renomear um
+# recurso quebra em silencio toda referencia a ele: nem o kustomize nem o
+# schema reclamam, e o sintoma e um 503 identico ao de um Ingress malfeito.
 apiVersion: v1
 kind: Service
 metadata:
   name: chaos-lab-api
-  namespace: chaos-lab
+  labels:
+    app.kubernetes.io/name: chaos-lab-api
 spec:
   type: ClusterIP
   selector:
-    app: chaos-api
+    app.kubernetes.io/name: chaos-lab-api
   ports:
     - name: http
       port: 80
-      targetPort: 8080
+      # por nome, nao por numero: mudar a porta do container atualiza o Service
+      targetPort: http
       protocol: TCP
