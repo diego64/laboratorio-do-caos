@@ -6,8 +6,15 @@ resources:
 patches:
   - target:
       kind: Deployment
-      name: chaos-api
+      name: chaos-lab-api
     patch: |-
       - op: replace
         path: /spec/replicas
         value: 1
+  - target:
+        kind: HorizontalPodAutoscaler
+        name: chaos-lab-api
+    patch: |-
+        - op: replace
+          path: /spec/maxReplicas
+          value: 1

@@ -5,10 +5,29 @@ metadata:
   namespace: chaos-lab
 spec:
   podSelector: {}
-  policyTypes:
-    - Egress
+  policyTypes: [Egress]
   egress:
+    # DNS - Precisa ser o primeiro pois sem isto, nada resolve
     - to:
-        - podSelector:
+        - namespaceSelector:
             matchLabels:
-              app.kubernetes.io/name: postgres
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    # dependencias dentro do proprio namespace
+    - to:
+        - podSelector: {}
+      ports:
+        - { protocol: TCP, port: 5432 }
+        - { protocol: TCP, port: 27017 }
+    # coletor OTLP
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+      ports:
+        - { protocol: TCP, port: 4318 }

@@ -3,9 +3,8 @@ kind: Ingress
 metadata:
   name: chaos-lab-api
   namespace: chaos-lab
-  annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
 spec:
+  ingressClassName: nginx
   rules:
     - host: chaos-lab.local
       http:
@@ -16,4 +15,4 @@ spec:
               service:
                 name: chaos-lab-api
                 port:
-                  number: 3000
+                  number: 80
