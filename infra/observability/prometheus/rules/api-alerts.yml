@@ -2,7 +2,9 @@ groups:
   - name: chaos-lab-api
     rules:
       - alert: TaxaDeErro5xxAlta
-        expr: rate(http_requests_total{status_code=~"5.."}) > 0.05
+        expr: >-
+          sum(rate(http_requests_total{status_code=~"5.."}[5m]))
+          / sum(rate(http_requests_total[5m])) > 0.05
         for: 2m
         labels:
           severity: critical
@@ -10,7 +12,7 @@ groups:
           summary: "Taxa de 5xx acima de 5%"
 
       - alert: LatenciaP95Alta
-        expr: histogram_quantile(0.95, sum(rate(http_request_duration_ms_bucket[5m])) by (le)) > 500
+        expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le)) > 0.5
         for: 5m
         labels:
           severity: warning

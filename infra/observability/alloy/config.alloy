@@ -2,14 +2,59 @@ discovery.docker "containers" {
   host = "unix:///var/run/docker.sock"
 }
 
+// sem relabel os alvos so carregam meta-labels (__meta_*), que o Loki descarta:
+// todo log chegava como {service_name="unknown_service"} e nenhum painel filtrava nada.
+discovery.relabel "containers" {
+  targets = discovery.docker.containers.targets
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+    target_label  = "stack"
+  }
+}
+
 loki.source.docker "logs" {
-  host       = "unix:///var/run/docker.sock"
-  targets    = discovery.docker.containers.targets
-  forward_to = [loki.write.default.receiver]
+  host          = "unix:///var/run/docker.sock"
+  targets       = discovery.relabel.containers.output
+  relabel_rules = discovery.relabel.containers.rules
+  forward_to    = [loki.process.nivel.receiver]
+}
+
+// a API loga JSON (pino): extrai o nivel para o Grafana colorir e permitir filtro por severidade
+loki.process "nivel" {
+  stage.match {
+    selector = "{service=\"api\"}"
+
+    stage.json {
+      expressions = {level = "level"}
+    }
+
+    stage.template {
+      source   = "level"
+      template = "{{ if eq .Value \"10\" }}trace{{ else if eq .Value \"20\" }}debug{{ else if eq .Value \"30\" }}info{{ else if eq .Value \"40\" }}warn{{ else if eq .Value \"50\" }}error{{ else if eq .Value \"60\" }}fatal{{ else }}unknown{{ end }}"
+    }
+
+    stage.labels {
+      values = {level = "level"}
+    }
+  }
+
+  forward_to = [loki.write.loki.receiver]
 }
 
 loki.write "loki" {
   endpoint {
-    url = "http://loki:3100/api/prom/push"
+    url = "http://loki:3100/loki/api/v1/push"
   }
 }
