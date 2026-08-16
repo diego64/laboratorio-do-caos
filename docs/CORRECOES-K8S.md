@@ -4,10 +4,11 @@ Documentação técnica da verificação dos manifestos em `infra/k8s/`: o que f
 examinado, o que está quebrado, **por que** cada coisa quebra, e qual correção
 cada defeito pede.
 
-> **Estado: auditoria concluída, correções não aplicadas.**
-> Nenhum arquivo em `infra/k8s/` foi alterado. Este documento é o levantamento e
-> o plano. O companheiro dele é [`CORRECOES-DOCKER.md`](./CORRECOES-DOCKER.md),
-> que registra correções já aplicadas e mergeadas.
+> **Estado: correções aplicadas e validadas em cluster real.**
+> A auditoria da seção 4 em diante descreve os defeitos como foram encontrados;
+> a [seção 15](#15-aplicação-e-validação-em-cluster) registra a correção de cada
+> um e a prova de funcionamento num cluster `kind` descartável. O companheiro
+> deste documento é [`CORRECOES-DOCKER.md`](./CORRECOES-DOCKER.md).
 
 Cada achado referencia o ID de [`CATALOGO-DE-FALHAS.md`](./CATALOGO-DE-FALHAS.md)
 quando corresponde a uma falha semeada. Achados sem ID são defeitos reais
@@ -89,6 +90,10 @@ infra/k8s/
 ```
 
 13 recursos renderizados a partir de 12 arquivos.
+
+Depois das correções (seção 15) o inventário passou a ter três arquivos novos —
+`pdb.yaml` no lugar de `pdb.yml`, `statefulset-postgres.yaml` e
+`initdb/00-init-mongo.js` — e o build passou a render 19 recursos.
 
 ---
 
@@ -742,7 +747,9 @@ Achados fora do catálogo: ausência de workload Postgres, `spec` do PDB dentro 
 na SA, URLs com `localhost`, Mongo sem probes, Mongo sem SA dedicada, senha
 literal no Mongo, `enforce-version: latest`, deriva `mongo:7` vs `mongo:8`.
 
-**Total: 17 defeitos.**
+**Total: 17 defeitos** — todos corrigidos e validados na seção 15. A coluna
+"situação" acima descreve o estado **no momento da auditoria**, que é o que dá
+sentido às seções 3 a 9; para o estado atual, ver a tabela 15.1.
 
 ### 11.1 O `K8S-14` em detalhe
 
@@ -888,3 +895,141 @@ Resumo do que este documento ensina, destacado do contexto específico.
 | `readOnlyRootFilesystem` exige `emptyDir` no que precisa escrever | Seção 10 |
 | `targetPort` por **nome** torna divergência de porta impossível de reintroduzir | Seção 10 |
 | Um defeito que mascara outro: a correção do primeiro precisa antecipar o segundo | Seção 5.1 |
+
+---
+
+## 15. Aplicação e validação em cluster
+
+Os 17 defeitos foram corrigidos e o resultado validado num cluster `kind`
+descartável, criado para o teste e destruído ao final. Esta seção registra o que
+mudou e a evidência de cada verificação.
+
+### 15.1 Correções aplicadas
+
+| # | Defeito | Correção |
+|---|---|---|
+| 1 | `pdb.yml` vs `pdb.yaml` | Arquivo renomeado e `spec` desindentado para o nível raiz |
+| 2 | `mongo-url` inexistente no Secret | Container `api` passa a pedir `mongodb-url` |
+| 3 | Ingress apontando para Service inexistente | Service renomeado de `chaos-lab-service` para `chaos-lab-api` |
+| 4 | Patch do overlay sem alvo | Alvo corrigido para `chaos-lab-hpa`, patcheando `minReplicas` **e** `maxReplicas` |
+| 5 | `OTL_ENABLED` | `OTEL_ENABLED` |
+| 6 | initContainer sem `tsx` nem `scripts/` | Novo alvo `migrator` no Dockerfile |
+| 7 | HPA sem metrics-server | `minReplicas = maxReplicas = 1` no overlay local, onde o HPA não tem função |
+| 8 | Sem workload de Postgres | `statefulset-postgres.yaml` novo |
+| 9 | `spec` do PDB dentro de `metadata` | Desindentado |
+| 10 | `automountServiceAccountToken` dentro de `metadata` | Movido para o nível raiz e repetido no `PodSpec` |
+| 11 | Namespace errado na SA | Removido do arquivo — o `kustomization.yaml` já o injeta |
+| 12 | URLs do Secret em `localhost` | `postgres:5432` e `mongo:27017` |
+| 13 | Mongo sem probes | Readiness por `mongosh`, liveness por `tcpSocket` |
+| 14 | Mongo sem SA dedicada | SAs `postgres` e `mongo`, ambas sem automount |
+| 15 | Senha literal no Mongo | Todas as credenciais vindas do Secret |
+| 16 | `enforce-version: latest` | Fixado em `v1.33` |
+| 17 | `mongo:7` contra `mongo:8` no compose | Alinhado em `mongo:8` |
+
+### 15.2 Decisões que mereceram escolha
+
+**Imagem separada para migração.** A `release` não serve como initContainer:
+`tsx` é `devDependency` e `scripts/` não é copiado para lá. As alternativas eram
+instalar `tsx` na imagem de produção — que anularia o multi-stage, inflando de
+69 MB para o tamanho de uma imagem com compilador — ou compilar `scripts/` junto,
+o que exigiria `rootDir: "."` e mudaria o layout de `dist/`, quebrando o `CMD` que
+já está em produção. O alvo `migrator` isola o problema sem tocar em nada que já
+funciona.
+
+**Sem ConfigMap de init para o Postgres.** `001_init.sql` já executa
+`CREATE EXTENSION IF NOT EXISTS pgcrypto`, e quem aplica as migrações aqui é o
+initContainer, não o entrypoint da imagem. O `000_pg_init.sh` do compose seria
+redundante.
+
+**`initdb/00-init-mongo.js` é uma cópia.** O Kustomize recusa ler arquivo fora da
+própria raiz — restrição de segurança que só se contorna com `--load-restrictor`
+em toda invocação, o que transformaria todo comando do projeto num footgun. A
+cópia é o menor mal, e o `kustomization.yaml` registra a origem para quem for
+alterar o original.
+
+**Liveness do Mongo por TCP, readiness por `mongosh`.** Ver 15.4.
+
+### 15.3 Evidência
+
+Cluster `kind` com control-plane e worker, imagens carregadas via
+`kind load docker-image`, `kubectl apply -k infra/k8s/overlays/local`.
+
+```
+NAME                             READY   STATUS    RESTARTS   AGE
+chaos-lab-api-549fffcd94-5b2n8   1/1     Running   0          5m3s
+mongo-0                          1/1     Running   0          3m30s
+postgres-0                       1/1     Running   0          3m30s
+```
+
+Verificação item a item:
+
+| O que se queria provar | Comando | Resultado |
+|---|---|---|
+| O manifesto aplica | `kubectl apply -k overlays/local` | 19 recursos criados, sem erro de schema — o que por si só prova as correções do PDB e da SA, que a validação estrita rejeitaria |
+| Referências resolvem | `scripts/check-k8s-refs.py` | `nenhuma referencia quebrada` (eram 8) |
+| Patch do overlay aplica | `kubectl get hpa` | `MIN 1  MAX 1` (era 10) |
+| Migração roda | `kubectl logs -c migrate` | `nenhuma migracao pendente` |
+| A cadeia Service→Pod fecha | `kubectl get endpointslices` | `chaos-lab-api → 10.244.1.9  ready=true` |
+| A aplicação enxerga os bancos | `GET /health/ready` | `{"status":"ready","dependencies":{"postgres":"up","mongodb":"up"}}` |
+| O token **não** é montado | `ls /var/run/secrets/.../serviceaccount/` | `No such file or directory` |
+| O PDB protege pods reais | `kubectl get pdb` | `ALLOWED DISRUPTIONS: 1` |
+| O Ingress entrega | `curl -H "Host: chaos-lab.local" http://127.0.0.1/health/live` | `HTTP 200` |
+| A autenticação funciona | `curl .../assets` sem token | `HTTP 401` |
+| As métricas saem | `curl .../metrics` | séries `http_requests_total` presentes |
+
+### 15.4 O defeito que só apareceu rodando
+
+A primeira versão da correção deu ao Mongo readiness **e** liveness por
+`mongosh`, espelhando o healthcheck do compose. No cluster:
+
+```
+Liveness probe failed: command timed out:
+  "mongosh --quiet --eval db.adminCommand('ping').ok" timed out after 1s
+Container mongo failed liveness probe, will be restarted
+```
+
+`mongosh` é um CLI escrito em Node e leva segundos só para iniciar. O
+`timeoutSeconds` **padrão de uma probe é 1 segundo** — valor que o comando nunca
+alcança. As duas probes estouravam sempre, e a liveness passou a matar um
+container perfeitamente saudável em loop.
+
+É exatamente o risco descrito na seção 8.1 deste documento, e a correção caiu
+nele. Vale como lembrete de que **liveness agressiva é uma falha que se
+autoalimenta**: o reinício não conserta nada, e o pod parece doente quando o
+doente é o critério.
+
+A correção final separa os papéis:
+
+- **readiness** por `mongosh` com `timeoutSeconds: 10` — a verificação é cara,
+  mas é a que realmente diz se o banco aceita comando
+- **liveness** por `tcpSocket` — barata, e suficiente para detectar processo
+  morto sem gastar um processo Node a cada ciclo
+
+Depois da correção, `mongo-0` ficou com **0 restarts**.
+
+Detalhe correlato: a primeira tentativa do initContainer de migração falhou com
+`Dependencia indisponivel: postgres`, porque rodou antes de o Postgres ficar
+`Ready`. **Não é defeito** — initContainer que falha é reiniciado, e a segunda
+tentativa passou sozinha. O que atrapalha o diagnóstico é `consultar()` em
+`src/infra/postgres.ts` converter qualquer erro de conexão nessa mensagem
+genérica, que não distingue "banco ainda subindo" de "credencial errada".
+
+### 15.5 O que ficou de fora
+
+**metrics-server não foi instalado.** No overlay local o HPA está fixado em
+`minReplicas = maxReplicas = 1`, onde ele não tem o que decidir. Para exercitar
+o autoscaling de verdade é preciso instalar o metrics-server com
+`--kubelet-insecure-tls` (o kubelet do kind usa certificado auto-assinado), como
+descrito na seção 9.1.
+
+**NetworkPolicy não foi exercitada.** O `kindnet`, CNI padrão do kind, **não
+implementa NetworkPolicy** — a política existe no cluster e não é aplicada.
+Validar de verdade exige subir o kind com Calico ou Cilium. O manifesto está
+correto por inspeção, mas isso não é o mesmo que testado.
+
+**O ingress-nginx precisou de um ajuste externo ao repositório.** O manifesto
+`main` do projeto ingress-nginx não traz mais o `nodeSelector: ingress-ready`, e
+o controller caiu no worker, que não tem `extraPortMappings`. Foi corrigido com
+um `patch` no deployment do controller durante o teste. **O `kind-cluster.yaml`
+deste repositório está correto** — a label `ingress-ready=true` estava no
+control-plane, como esperado.
