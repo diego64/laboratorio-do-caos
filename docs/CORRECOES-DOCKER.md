@@ -8,6 +8,13 @@ observabilidade emitindo sinal real.
 Branch: `fix/docker`
 Base: `f5eb66f — chore: initial commit do Laboratorio do Caos`
 
+> **Estado: correções aplicadas e validadas com a stack em execução.**
+> Este foi o primeiro dos três documentos de correção. As camadas que ele
+> declarava fora de escopo já foram tratadas desde então:
+> [`CORRECOES-K8S.md`](./CORRECOES-K8S.md) cobre `K8S-01..20` e
+> [`CORRECOES-CI-CD.md`](./CORRECOES-CI-CD.md) cobre a camada CI/CD. Só a camada
+> PRODUÇÃO (`PRD-01..06`, em `render.yaml`) segue intacta.
+
 ---
 
 ## 1. Escopo e como ler este documento
@@ -20,8 +27,11 @@ percorre as camadas **DOCKER**, **COMPOSE**, **BANCOS**, **ENV** e
 Cada correção abaixo referencia o ID do catálogo. Quando a mudança não corresponde
 a nenhuma falha semeada (melhoria adicional), está marcada como **[extra]**.
 
-**Fora de escopo deste documento:** camadas KUBERNETES (`K8S-01..20`),
-CI/CD (`CI-01..18`) e PRODUÇÃO (`PRD-01..06`). Continuam intactas.
+**Fora de escopo deste documento:** camadas KUBERNETES (`K8S-01..20`), CI/CD
+(`CI-01..CI-18`, 17 IDs — não há `CI-13`) e PRODUÇÃO (`PRD-01..06`). Estavam
+todas intactas quando este documento foi escrito; as duas primeiras foram
+corrigidas depois, em [`CORRECOES-K8S.md`](./CORRECOES-K8S.md) e
+[`CORRECOES-CI-CD.md`](./CORRECOES-CI-CD.md).
 
 **Regra respeitada:** nada em `src/` foi alterado. A única mudança em código de
 aplicação foi em `package.json` (scripts), que é configuração de tooling, não
@@ -39,7 +49,9 @@ lógica de negócio.
 | ENV | `.env.example`, `.env`, `package.json` | ENV-01 … ENV-07 (7) | Completa |
 | OBSERVABILIDADE | `prometheus.yml`, `api-alerts.yml`, `loki-config.yml`, `tempo-config.yml`, `config.alloy`, `datasources.yml`, dashboards | OBS-01 … OBS-13 (13) | Completa |
 
-**Total: 48 falhas semeadas corrigidas.**
+**Total: 48 falhas semeadas corrigidas.** Os 49 IDs destas cinco camadas estão
+todos contabilizados: `PG-03` é o único não corrigido, porque não reproduz — ver
+seção 13.
 
 Além disso, foram adicionados dois exporters de banco, a separação do dashboard
 único em quatro dashboards temáticos e a correlação métrica ↔ trace ↔ log entre
@@ -904,7 +916,9 @@ mantém as URLs em `localhost` — os scripts carregam via `--env-file` nativo.
 | cAdvisor | Daria CPU e memória por **container**; hoje o dashboard de ambiente mostra por **processo**. Um container a mais para uma métrica que ainda não foi necessária. |
 | Alertmanager | Não existe no compose. O bloco `alerting` do Prometheus está comentado, com nota para reativar junto com o serviço. |
 | Replica set do Mongo | Removido. Reativar exige `security.keyFile` junto com a autenticação, e a aplicação não usa transação nem change stream. |
-| Camadas K8S, CI/CD e PRODUÇÃO | 44 falhas semeadas ainda ativas, fora do escopo do ambiente Docker local. |
+| Camadas K8S e CI/CD | Estavam fora do escopo do ambiente Docker local. Corrigidas depois, em [`CORRECOES-K8S.md`](./CORRECOES-K8S.md) (20 IDs) e [`CORRECOES-CI-CD.md`](./CORRECOES-CI-CD.md) (17 IDs). |
+| Camada PRODUÇÃO | `PRD-01..06` em `render.yaml`, ainda ativas. É a única camada do laboratório que segue intacta. |
+| `PG-03` | Não reproduz. O catálogo descreve `002_audit.sql` rodando antes de `001_init.sql`, mas os três arquivos de `db/migrations/` já estão nomeados `000_`, `001_`, `002_`, e o entrypoint do Postgres os executa em ordem alfabética — as FKs de `002` encontram `users` e `assets` criadas por `001`. O que impedia a execução era o mount em `/docker-entrypoint-init.d` (sem o `db`), corrigido em 5.2. Ver também a nota de rastreabilidade em 6.1: o comentário dentro do `000_pg_init.sh` rotulava a própria falha como `PG-03` quando ela é `PG-01`. |
 
 ---
 

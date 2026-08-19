@@ -6,6 +6,6 @@ coverage/
 .env
 *.log
 .DS_Store
-pnpm-lock.yaml
 SPEC.md
 skills-lock.json
+.chaos-backup
