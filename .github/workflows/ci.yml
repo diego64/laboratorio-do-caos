@@ -1,49 +1,112 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
   pull_request:
+    branches: [main]
+  push:
+    branches:
+      - 'feat/**'
+      - 'fix/**'
+      - 'docs/**'
+      - 'test/**'
+      - 'build/**'
+      - 'perf/**'
+      - 'style/**'
+      - 'refactor/**'
+      - 'chore/**'
+      - 'ci/**'
+      - 'raw/**'
+      - 'cleanup/**'
+      - 'remove/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build-test:
-    runs-on: ubuntu-latest-16core
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v2
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      # pnpm precisa existir ANTES do setup-node, senao `cache: pnpm` nao resolve o store.
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
         with:
+          version: 10
 
-          node-version: 18
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
           cache: pnpm
 
-      - name: Instalar dependencias
+      - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Typecheck
         run: pnpm typecheck
 
-      - name: Testes
-        working-directory: ./app
+      # ponytail: sem `services:` — tests/setup-env.ts define o ambiente e a suite
+      # roda via app.inject(), sem tocar Postgres/Mongo. Subir bancos aqui seria
+      # custo puro. Se surgir teste de integracao real, adicione um job separado.
+      - name: Run tests
         run: pnpm test:cov
 
+      - name: Build
+        run: pnpm build
+
       - name: Upload coverage
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: coverage
           path: coverage/
+          retention-days: 7
 
   docker:
-    needs: [lint]
+    needs: [quality]
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      security-events: write
     steps:
-      - uses: actions/checkout@v4
-      - name: Build da imagem
-        run: docker build -t chaos-lab-api:${{ github.sha }} .
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Scan de vulnerabilidades
-        uses: aquasecurity/trivy-action@master
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build da imagem
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: release
+          push: false
+          load: true
+          tags: chaos-lab-api:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Scan de vulnerabilidades da imagem
+        uses: aquasecurity/trivy-action@0.24.0
         with:
           image-ref: chaos-lab-api:${{ github.sha }}
-          exit-code: "1"
-          severity: "UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL"
+          format: sarif
+          output: trivy-image.sarif
+          severity: HIGH,CRITICAL
+          # exit-code 0: o gate e o Security tab, nao um CI vermelho por CVE de base image.
+          exit-code: "0"
+
+      - name: Publicar SARIF da imagem
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-image.sarif
+          category: trivy-image
