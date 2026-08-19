@@ -1,31 +1,85 @@
 name: CD
 
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   deploy-render:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
-    environment: production-approved
+    environment: production
     steps:
       - uses: actions/checkout@v4
-      - name: Disparar deploy no Render
-        run: |
-          curl -X POST \
-            -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
-            "https://api.render.com/v1/services/${{ secrets.RENDER_SERVICE_ID }}/deploys"
 
-      - name: Aguardar propagacao
-        run: sleep 20
-
-      - name: Health check de producao
+      - name: Validar segredos e variaveis obrigatorios
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+          BASE_URL: ${{ vars.PRODUCTION_URL }}
         run: |
-          curl --fail --silent --show-error \
-            "https://chaos-lab-api.onrender.com/health"
+          : "${RENDER_API_KEY:?secret RENDER_API_KEY ausente}"
+          : "${RENDER_SERVICE_ID:?secret RENDER_SERVICE_ID ausente}"
+          : "${BASE_URL:?variable PRODUCTION_URL ausente}"
 
-      - name: Smoke test
+      - name: Disparar deploy
+        id: deploy
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
         run: |
-          curl --fail "https://chaos-lab-api.onrender.com/assets" \
-            -H "Authorization: Bearer $API_TOKEN"
+          set -euo pipefail
+          resposta=$(curl -fsS -X POST \
+            -H "Authorization: Bearer $RENDER_API_KEY" \
+            -H "Content-Type: application/json" \
+            "https://api.render.com/v1/services/$RENDER_SERVICE_ID/deploys")
+          echo "deploy_id=$(echo "$resposta" | jq -r '.id')" >> "$GITHUB_OUTPUT"
+
+      # Sem esta espera o health check abaixo bate na instancia ANTIGA, que responde
+      # "ready" na hora — deploy quebrado passaria como verde.
+      - name: Aguardar o deploy ficar live
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+          DEPLOY_ID: ${{ steps.deploy.outputs.deploy_id }}
+        run: |
+          set -euo pipefail
+          for tentativa in $(seq 1 60); do
+            status=$(curl -fsS -H "Authorization: Bearer $RENDER_API_KEY" \
+              "https://api.render.com/v1/services/$RENDER_SERVICE_ID/deploys/$DEPLOY_ID" \
+              | jq -r '.status')
+            case "$status" in
+              live) echo "deploy $DEPLOY_ID live na tentativa $tentativa"; exit 0 ;;
+              build_failed|update_failed|canceled|pre_deploy_failed)
+                echo "deploy $DEPLOY_ID terminou como $status"; exit 1 ;;
+            esac
+            echo "status=$status ... ($tentativa/60)"; sleep 10
+          done
+          echo "deploy nao ficou live em 10 minutos"; exit 1
+
+      - name: Health check com retry
+        env:
+          BASE_URL: ${{ vars.PRODUCTION_URL }}
+        run: |
+          set -euo pipefail
+          for tentativa in $(seq 1 30); do
+            if curl -fsS "$BASE_URL/health/ready" | jq -e '.status == "ready"' >/dev/null; then
+              echo "producao saudavel na tentativa $tentativa"; exit 0
+            fi
+            echo "aguardando... ($tentativa/30)"; sleep 10
+          done
+          echo "health check falhou apos 5 minutos"; exit 1
+
+      - name: Smoke test do contrato publico
+        env:
+          BASE_URL: ${{ vars.PRODUCTION_URL }}
+        run: |
+          set -euo pipefail
+          curl -fsS "$BASE_URL/docs/json" | jq -e '.openapi' >/dev/null
+          test "$(curl -s -o /dev/null -w '%{http_code}' "$BASE_URL/assets")" = "401"
