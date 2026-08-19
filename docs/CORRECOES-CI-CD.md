@@ -4,12 +4,12 @@ Registro da recuperação dos workflows do GitHub Actions em `.github/`: o que
 estava quebrado, **por que** cada coisa quebra, e o que cada defeito pede como
 correção.
 
-> **Estado: correções aplicadas e verificadas estaticamente.**
-> Ao contrário das camadas Docker e Kubernetes, esta não pôde ser validada em
-> execução real: um workflow só executa quando o GitHub o executa. O que dá para
-> provar localmente está na [seção 14](#14-verificação); o que só o `push` prova
-> está na [seção 16](#16-o-que-ficou-de-fora). Os companheiros deste documento são
-> [`CORRECOES-DOCKER.md`](./CORRECOES-DOCKER.md) e
+> **Estado: correções aplicadas, verificadas estaticamente e executadas no
+> GitHub.** A verificação local está na [seção 14](#14-verificação). O `push` da
+> PR #3 executou os workflows pela primeira vez e derrubou dois defeitos que
+> nenhuma verificação estática pegaria — estão na
+> [seção 17](#17-o-que-só-a-execução-mostrou), que é a parte mais honesta deste
+> documento. Os companheiros são [`CORRECOES-DOCKER.md`](./CORRECOES-DOCKER.md) e
 > [`CORRECOES-K8S.md`](./CORRECOES-K8S.md).
 
 Branch: `fix/ci-cd`
@@ -275,10 +275,10 @@ Node que já vem pré-instalado na imagem do runner para se instalar.
 
 ```yaml
 # pnpm precisa existir ANTES do setup-node, senao `cache: pnpm` nao resolve o store.
+# Sem `version:` de proposito: a action recusa rodar se a versao for declarada
+# aqui E no `packageManager` do package.json, que e a fonte da verdade.
 - name: Set up pnpm
   uses: pnpm/action-setup@v4
-  with:
-    version: 10
 
 - name: Set up Node.js
   uses: actions/setup-node@v4
@@ -287,8 +287,23 @@ Node que já vem pré-instalado na imagem do runner para se instalar.
     cache: pnpm
 ```
 
-O comentário ficou no arquivo. Essa ordem é exatamente o tipo de coisa que a
+Os comentários ficaram no arquivo. Essa ordem é exatamente o tipo de coisa que a
 próxima pessoa inverte ao "organizar" os passos.
+
+A ausência de `version:` foi aprendida na primeira execução real. Com
+`version: 10` no `with:` **e** `packageManager: "pnpm@10.4.1"` no `package.json`,
+a action aborta:
+
+```
+Error: Multiple versions of pnpm specified:
+  - version 10 in the GitHub Action config with the key "version"
+  - version pnpm@10.4.1 in the package.json with the key "packageManager"
+```
+
+Ela se recusa a adivinhar qual das duas vale, e está certa: `10` e `10.4.1` não
+são a mesma coisa, e a divergência apareceria como `ERR_PNPM_BAD_PM_VERSION`
+mais tarde, longe da causa. Declarar em um lugar só — e o lugar é o
+`packageManager`, que o Corepack e o próprio `pnpm` também respeitam.
 
 ### 5.2 `node-version: 18` contra `engines: >=22` — `CI-02`
 
@@ -417,7 +432,7 @@ YAML. E é a razão de o `dependabot.yml` ter ganhado o ecossistema
 `github-actions` (seção 9): fixar versão só é sustentável se algo se encarrega
 de propor as atualizações.
 
-**Correção:** `checkout@v4`, `upload-artifact@v4`, `trivy-action@0.24.0`. A
+**Correção:** `checkout@v4`, `upload-artifact@v4`, `trivy-action@v0.36.0`. A
 verificação de `@master`/`@main` entrou no `check-workflows.py`.
 
 ---
@@ -631,7 +646,7 @@ lugar nenhum.
 este número de dependências gera dezenas de PRs por semana e o
 `open-pull-requests-limit: 10` vira uma fila que nunca esvazia.
 
-`github-actions` é o que fecha o ciclo da seção 5.7: fixar `trivy-action@0.24.0`
+`github-actions` é o que fecha o ciclo da seção 5.7: fixar `trivy-action@v0.36.0`
 em vez de `@master` só é sustentável se alguém propuser o `0.25.0` quando ele
 sair.
 
@@ -1096,6 +1111,9 @@ Resumo do que este documento ensina, destacado do contexto específico.
 | Action em `@master` muda sem o repositório mudar — fixar versão exige bot que proponha as atualizações | Seções 5.7, 9 |
 | `services:` que nenhum teste usa carrega configuração própria que ninguém valida | Seção 7 |
 | Linter escrito antes dos defeitos testa a imaginação de quem o escreveu | Seção 13 |
+| Corrigir uma falha semeada pode introduzir outra: `version:` resolveu `CI-03` e colidiu com o `packageManager` | Seção 17.1 |
+| Versão declarada em dois lugares é conflito, não redundância — a ferramenta boa se recusa a adivinhar | Seção 17.1 |
+| Verificação de forma alcança o que está dentro do artefato; referência externa (tag, secret, runner, environment) só a execução resolve | Seção 17.3 |
 
 ---
 
@@ -1103,7 +1121,7 @@ Resumo do que este documento ensina, destacado do contexto específico.
 
 | Item | Motivo |
 |---|---|
-| **Execução real dos workflows** | Um workflow só executa quando o GitHub o executa. Tudo aqui foi verificado estaticamente e pelos comandos locais da seção 14. A prova de que o `quality` passa no runner é o primeiro push desta branch. |
+| **Execução real dos workflows** | Deixou de ficar de fora: o push da PR #3 executou os quatro. Ver seção 17. O `cd.yml` continua não exercitado — só roda em `main` e exige os secrets do environment `production`. |
 | **`actionlint`** | Não disponível no ambiente. `scripts/check-workflows.py` cobre a classe de defeito encontrada, não o conjunto que o `actionlint` cobre — em especial, ele não valida expressões `${{ }}`, contextos disponíveis por gatilho, nem shellcheck nos blocos `run:`. Quando estiver disponível, é a ferramenta preferida. |
 | **Job de lint** | O projeto não tem linter configurado nem script de lint. Adicionar um aqui seria escolher regras de estilo que ninguém combinou. O `typecheck` cobre o que é verificável sem essa decisão. |
 | **Gate de cobertura** | `pnpm test:cov` gera o relatório e o publica como artifact; nada falha por cobertura baixa. Definir o limiar exige decidir o número, e o número tem dono. |
@@ -1114,7 +1132,76 @@ Resumo do que este documento ensina, destacado do contexto específico.
 
 ---
 
-## 17. Índice de arquivos alterados
+## 17. O que só a execução mostrou
+
+O documento acima defende que verificação estática pega a classe de defeito que
+derrubou esta camada. Pega — e a primeira execução real provou, no mesmo ato,
+que ela não pega tudo. Os dois defeitos abaixo passaram por
+`check-workflows.py`, por `yaml.safe_load` e pela leitura, e morreram em
+segundos no runner.
+
+### 17.1 `version: 10` contra `packageManager`
+
+```
+Error: Multiple versions of pnpm specified:
+  - version 10 in the GitHub Action config with the key "version"
+  - version pnpm@10.4.1 in the package.json with the key "packageManager"
+Remove one of these versions to avoid version mismatch errors like ERR_PNPM_BAD_PM_VERSION
+```
+
+A `pnpm/action-setup` se recusa a rodar quando a versão é declarada nos dois
+lugares. E está certa: `10` e `10.4.1` não são a mesma coisa, e a divergência
+apareceria depois como `ERR_PNPM_BAD_PM_VERSION`, longe da causa.
+
+O `version: 10` veio da seção 5.1 — a correção de `CI-03`. Corrigir a falha
+semeada introduziu uma segunda: o `packageManager` do `package.json` já dizia
+`pnpm@10.4.1`, e ninguém olhou.
+
+**Correção:** remover `version:` do `with:`. O `packageManager` é a fonte da
+verdade, e é o que o Corepack e o próprio `pnpm` também leem.
+
+### 17.2 `trivy-action@0.24.0` não existe
+
+```
+##[error]Unable to resolve action `aquasecurity/trivy-action@0.24.0`,
+unable to find version `0.24.0`
+```
+
+As tags do repositório são `v0.24.0`, `v0.25.0`, …, `v0.36.0`. Sem o `v`, não há
+o que resolver.
+
+O `check-workflows.py` valida que o `uses` **tem** uma referência fixada e que
+ela não é branch móvel. Não valida que a referência **existe** — para isso é
+preciso resolver a tag contra o registro remoto, o que exige rede e transforma
+um verificador offline em outra coisa. O `actionlint` também não resolve
+existência de tag por padrão.
+
+**Correção:** `@v0.36.0` nos dois workflows, a release atual. O ecossistema
+`github-actions` do Dependabot (seção 9) passa a manter isso em dia.
+
+### 17.3 O que isso diz sobre o método
+
+Os dois defeitos têm a mesma forma: **referência a uma entidade externa ao
+repositório**. Uma versão declarada em outro arquivo, uma tag que vive em outro
+repositório. Nenhum dos dois é uma propriedade do documento YAML, e é por isso
+que nenhuma verificação de forma os alcança.
+
+> Verificação estática resolve o que está dentro do artefato. Referência a
+> algo de fora — tag remota, versão declarada noutro arquivo, secret, runner
+> label, environment — só a execução resolve. O `push` não é o fim da
+> verificação; é a camada dela que nenhuma outra substitui.
+
+É a mesma lição da seção 15.4 do `CORRECOES-K8S.md`, onde o defeito do
+`timeoutSeconds` de probe só apareceu com os pods de pé. As três camadas do
+laboratório convergiram no mesmo ponto por caminhos diferentes.
+
+O que **não** mudou: os 37 defeitos das seções 4 a 11 continuam todos válidos, e
+foram todos encontrados sem executar nada. A verificação estática pagou por si
+— ela só não é suficiente.
+
+---
+
+## 18. Índice de arquivos alterados
 
 ```
 .github/workflows/ci.yml       reescrito

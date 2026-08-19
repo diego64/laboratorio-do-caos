@@ -35,10 +35,10 @@ jobs:
         uses: actions/checkout@v4
 
       # pnpm precisa existir ANTES do setup-node, senao `cache: pnpm` nao resolve o store.
+      # Sem `version:` de proposito: a action recusa rodar se a versao for declarada
+      # aqui E no `packageManager` do package.json, que e a fonte da verdade.
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 10
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -95,7 +95,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Scan de vulnerabilidades da imagem
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: chaos-lab-api:${{ github.sha }}
           format: sarif
