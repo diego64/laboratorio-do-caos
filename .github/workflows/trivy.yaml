@@ -1,0 +1,54 @@
+name: Trivy IaC
+
+# Complementa o scan de imagem do CI (ci.yml, job `docker`): aqui o alvo sao os
+# manifestos — Dockerfile, docker-compose e os YAMLs de Kubernetes. Vulnerabilidade
+# de dependencia npm fica com o Dependabot; nao ha sobreposicao.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'Dockerfile'
+      - 'docker/**'
+      - 'infra/**'
+      - '.github/workflows/trivy.yaml'
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: trivy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  config:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Scan de misconfiguration (IaC)
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          scan-type: config
+          scan-ref: .
+          format: sarif
+          output: trivy-config.sarif
+          severity: HIGH,CRITICAL
+          # exit-code 0: achados vao para o Security tab; o merge nao trava por IaC.
+          exit-code: "0"
+
+      - name: Publicar SARIF de IaC
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-config.sarif
+          category: trivy-config
