@@ -1,12 +1,27 @@
 version: 2
 updates:
-  - package-ecosystem: "pnpm"
-    directory: "/app"
+  - package-ecosystem: "npm"
+    directory: "/"
     schedule:
+      interval: "weekly"
       day: "monday"
     open-pull-requests-limit: 10
+    groups:
+      producao:
+        dependency-type: "production"
+        update-types: ["minor", "patch"]
+      desenvolvimento:
+        dependency-type: "development"
+    labels: ["dependencies"]
 
   - package-ecosystem: "docker"
     directory: "/"
     schedule:
       interval: "weekly"
+      day: "monday"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
